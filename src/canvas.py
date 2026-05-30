@@ -1,4 +1,6 @@
 from curses import qiflush
+from re import S
+from typing import Self
 
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -23,21 +25,26 @@ from PyQt5.QtCore import (
     QTimer, 
     pyqtSlot,
     Qt,
-    pyqtSignal
+    pyqtSignal,
+    QMutex,
+    QMutexLocker
 )
 import cv2
 
 from src.camera import IPWebCamThread
 
-import src.params as params
-COLOR = params.COLORS
+from src.params import gui, camera
+COLOR = gui.COLORS
 
 class  CameraWidget(QWidget):
-    MARGIN = 40
+    MARGIN = 40                         # Margin 
+    RENDER_FPS = gui.RENDER_FPS         # maksimum render FPS
 
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(params.W_CANVAS, params.H_CANVAS)
+        
+        # GUI setup
+        self.setMinimumSize(gui.W_CANVAS, gui.H_CANVAS)
         self.setStyleSheet(f"background-color:{COLOR['DARKER_BLUE']}")
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -47,20 +54,70 @@ class  CameraWidget(QWidget):
         self.camera_thread = None
         self.camera_enabled = False
 
-    @pyqtSlot(object)
-    def _on_camera_frame(self, frame):
-        """Receive frame dari camera thread."""
-        self.camera_frame = frame.copy()
-        self.update() # Triger repaint
+        # Camera rendering
+        self._pixmap_lock = QMutex()
+        self._cached_pixmap = None
 
+        self._render_timer = QTimer()
+        self._render_timer.setInterval(1000 // self.RENDER_FPS)
+        self._render_timer.timeout.connect(self.update)
+        self._render_timer.start()
+        self._new_frame_available = False
+
+    @pyqtSlot(object)
+    def _on_camera_frame(self, frame: cv2.typing.MatLike):
+        """Receive frame dari camera thread lalu render dari frame ke pixmap"""
+        if not self.show_camera:
+            return
+        
+        # Flag kalau ada frame baru
+        self._new_frame_available = True
+        
+        h, w, ch = frame.shape
+        widget_w, widget_h = self.width(), self.height()
+
+        # Resize frame sesuai ukuran widget
+        scale = max(widget_w / w, widget_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+
+        # Resize jika ukuran berbeda jauh
+        if abs(new_h - h) > 2 or abs(new_w - w) > 2:
+            frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Convert BGR -> RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, _ = rgb_frame.shape
+
+        # Buat QImage
+        qt_image = QImage(rgb_frame.data, w, h, w*3, QImage.Format_RGB888).copy()
+        new_pixmap = QPixmap.fromImage(qt_image)
+
+        # Simpan cache dengan lock
+        with QMutexLocker(self._pixmap_lock):
+            self._cached_pixmap = new_pixmap
+
+        # # Triger repaint sesuai FPS dari timer
+        # self.update()
+        
 
     def paintEvent(self, event):
         """Render canvas."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        
+        if not self.show_camera:
+            painter.fillRect(self.rect(), QColor(COLOR['DARKER_BLUE']))
+            return
+        
+        with QMutexLocker(self._pixmap_lock):
+            pixmap = self._cached_pixmap
 
-        if self.show_camera and self.camera_frame is not None:
-            self._draw_camera_background(painter)
+        if pixmap is not None:
+            # center pixmap
+            x = (self.width() - pixmap.width()) // 2
+            y = (self.height() - pixmap.height()) // 2
+            painter.drawPixmap(x, y, pixmap)
+            # self._draw_camera_background(painter)
         else:
             painter.fillRect(self.rect(), QColor(COLOR['DARKER_BLUE']))
         
@@ -93,8 +150,7 @@ class  CameraWidget(QWidget):
         pixmap_y = (widget_h - pixmap.height()) // 2
 
         painter.drawPixmap(pixmap_x, pixmap_y, pixmap)
-
-    
+   
 class ControlPanel(QWidget):
     """Control panel dengan buttons dan status displat"""
     # tombol untuk aktivasi kamera
@@ -271,7 +327,7 @@ class MainWindow(QMainWindow):
     def __init__ (self):
         super().__init__()
         self.setWindowTitle("OCR Aksara Jawa dengan IPWebcam camera")
-        self.setMinimumSize(params.W_MAIN, params.H_MAIN)
+        self.setMinimumSize(gui.W_MAIN, gui.H_MAIN)
         self._build_layout()
 
         # Auto-idle timer setelah 5 detik
@@ -282,7 +338,7 @@ class MainWindow(QMainWindow):
 
         # konfigurasi IP camera
         self.ip_camera_config = {
-            "ip_adress": params.IP_CAMERA_URL,
+            "ip_adress": camera.IP_CAMERA_URL,
             "port": 8080
         }
 

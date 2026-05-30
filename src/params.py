@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from numpy import indices
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
+from typing import TypedDict
     
+# path dataset
 class directory:
     ROOT_DIR = Path.cwd()
     INPUT_DIR = ROOT_DIR / "dataset/OPSI 1"
@@ -39,44 +40,48 @@ class model_conf:
     SEED = 42
     SPLIT_RATIO = (0.70, 0.15, 0.15)  # Train, Validation, Test
     CLASS_NAMES = names
-# path dataset
 
 # konfigurasi GUI
-W_MAIN, H_MAIN = 1200, 800
-W_CANVAS, H_CANVAS = 500, H_MAIN
+class gui:
+    W_MAIN, H_MAIN = 1200, 800
+    W_CANVAS, H_CANVAS = 500, H_MAIN
+    RENDER_FPS = 30
+    class ColorsDict(TypedDict):
+        DARKER_BLUE: str
+        DARK_BLUE: str
+        LIGHTER_BLUE: str
+        LIGHT_BLUE: str
+        DARKER_GRAY: str
+        GRAY: str
+        DARK_RED: str
+        BLUE: str
+        ORANGE: str
+        GREEN: str
+        RED: str
+        PURPLE: str
+        # ...add other colors
 
+    COLORS:ColorsDict = {
+        'DARKER_BLUE': "#1a1a2e",
+        'DARK_BLUE': "#16213e",
+        'LIGHTER_BLUE': '#00d4ff',
+        'LIGHT_BLUE': '#3a4563',
+        'DARKER_GRAY': '#555555',
+        'GRAY' : "#aaaaaa",
+        'DARK_RED' : "#8b0000",
+        "BLUE": "#3498db",      
+        "ORANGE": "#f39c12",    
+        "GREEN": "#2ecc71",      
+        "RED": "#e74c3c",       
+        "PURPLE": "#9b59b6"
+    }
+
+class camera:
+    IP_CAMERA_URL = "http://192.168.0.107"
+    IP_CAMERA_PORT = 8080
+    TARGET_FPS = 30
+    USE_RTSP = True
 # warna HEX for styling
 from typing import TypedDict
 
-class ColorsDict(TypedDict):
-    DARKER_BLUE: str
-    DARK_BLUE: str
-    LIGHTER_BLUE: str
-    LIGHT_BLUE: str
-    DARKER_GRAY: str
-    GRAY: str
-    DARK_RED: str
-    BLUE: str
-    ORANGE: str
-    GREEN: str
-    RED: str
-    PURPLE: str
-    # ...add other colors
 
-COLORS:ColorsDict = {
-    'DARKER_BLUE': "#1a1a2e",
-    'DARK_BLUE': "#16213e",
-    'LIGHTER_BLUE': '#00d4ff',
-    'LIGHT_BLUE': '#3a4563',
-    'DARKER_GRAY': '#555555',
-    'GRAY' : "#aaaaaa",
-    'DARK_RED' : "#8b0000",
-    "BLUE": "#3498db",      
-    "ORANGE": "#f39c12",    
-    "GREEN": "#2ecc71",      
-    "RED": "#e74c3c",       
-    "PURPLE": "#9b59b6"
-}
-
-IP_CAMERA_URL = "http://192.168.0.107"
-IP_CAMERA_PORT = 8080
