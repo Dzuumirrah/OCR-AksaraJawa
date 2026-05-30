@@ -1,0 +1,44 @@
+# Datasets
+dataset/
+*.csv
+*.h5
+*.hdf5
+*.json
+*.npy
+*.npz
+
+# Model weights and saved models
+models/
+*.pkl
+*.pth
+*.pt
+*.onnx
+*.pb
+checkpoint/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python byte-code
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Private settings/secrets
+.env
+secret.json
+*.log
+
+# Folders
+documentation/

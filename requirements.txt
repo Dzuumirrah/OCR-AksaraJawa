@@ -1,0 +1,11 @@
+tensorflow[and-cuda]
+opencv-python
+split-folders
+scikit-learn
+matplotlib
+seaborn
+numpy
+
+notebook 
+jupyterlab 
+ipykernel
