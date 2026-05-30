@@ -27,11 +27,11 @@ if __name__ == '__main__':
     # window = MainWindow()
     # window.show()
     # sys.exit(app.exec_())
-    ocr = OCRPipelineAksara(
-        model_path=MODEL_PATH,
-        class_names= CLASS_NAMES,
-        confidence_threshold=0.6
-    )
-    hasil = ocr.proses('test/images.jpg', visualisasi=True)
-    # print(CLASS_NAMES)
+    # ocr = OCRPipelineAksara(
+    #     model_path=MODEL_PATH,
+    #     class_names= CLASS_NAMES,
+    #     confidence_threshold=0.6
+    # )
+    # hasil = ocr.proses('test/images.jpg', visualisasi=True)
+    print(CLASS_NAMES)
                 
