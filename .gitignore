@@ -3,7 +3,6 @@ dataset/
 *.csv
 *.h5
 *.hdf5
-*.json
 *.npy
 *.npz
 
@@ -21,6 +20,7 @@ venv/
 .venv/
 env/
 ENV/
+.
 
 # Python byte-code
 __pycache__/
