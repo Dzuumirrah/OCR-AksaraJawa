@@ -1,9 +1,20 @@
 from pathlib import Path
 import os
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    
+class directory:
+    ROOT_DIR = Path.cwd()
+    INPUT_DIR = ROOT_DIR / "dataset/OPSI 1"
+    OUTPUT_DIR = ROOT_DIR / "dataset/dataset_aksara_split/"
+    MODEL_PATH = ROOT_DIR / "model_aksara.keras"
 
-# Konfigurasi global
-
-ROOT_DIR = Path.cwd()
+# Mengambil nama kelas 
+dataset_folder = directory.INPUT_DIR
+kelas = sorted(os.listdir(dataset_folder))
+counts = {k: len(os.listdir(os.path.join(dataset_folder, k))) for k in kelas if os.path.isdir(os.path.join(dataset_folder, k))}
+names = []
+for kelas, _ in counts.items():
+    names.append(kelas)
 
 # Konfigurasi model dan data
 class model_conf:
@@ -13,11 +24,8 @@ class model_conf:
     EPOCS = 60
     SEED = 42
     SPLIT_RATIO = (0.70, 0.15, 0.15)  # Train, Validation, Test
+    CLASS_NAMES = names
 # path dataset
-class directory:
-    INPUT_DIR = ROOT_DIR / "dataset_aksara/OPSI 1"
-    OUTPUT_DIR = ROOT_DIR / "dataset_aksara_split/"
-    MODEL_PATH = ROOT_DIR / "model_aksara.keras"
 
 # konfigurasi GUI
 W_MAIN, H_MAIN = 1200, 800

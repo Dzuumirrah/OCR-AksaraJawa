@@ -43,9 +43,9 @@ class OCRPipelineAksara:
             if 200 < area < (biner.shape[0] * biner.shape[1] * 0.5):
                 bounding_box.append((x, y, w, h))
 
-            # urutkan baris atas dulu (y), lalu kiri ke kanan (x)
-            bounding_box.sort(key=lambda b: (b[1] // 40, b[0]))
-            return bounding_box
+        # urutkan baris atas dulu (y), lalu kiri ke kanan (x)
+        bounding_box.sort(key=lambda b: (b[1] // 40, b[0]))
+        return bounding_box
         
     def klasifikasi_satu(self, img_bgr, bbox):
         """Potong satu karater dan prediksi kelasnya"""
@@ -113,10 +113,11 @@ class OCRPipelineAksara:
         for h in hasil:
             x, y, w, hh = h['bbox']
             warna = (0, 200, 0) if h['valid'] else (0, 0, 200)
-            cv2.rectangle(vis, (x, y), (x+w, y+hh), warna, 2)
-            label = f"{h['kelas']} {h['confidence']:.2f}"
-            cv2.putText(vis, label, (x, y-6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, warna)
+            if h['valid']:
+                cv2.rectangle(vis, (x, y), (x+w, y+hh), warna, 2)
+                label = f"{h['kelas']} {h['confidence']:.2f}"
+                cv2.putText(vis, label, (x, y-6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, warna)
             
         plt.figure(figsize=(14, 8))
         plt.imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))

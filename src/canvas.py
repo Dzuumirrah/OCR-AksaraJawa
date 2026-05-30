@@ -29,7 +29,6 @@ import cv2
 
 from src.camera import IPWebCamThread
 
-import src.camera as camera
 import src.params as params
 COLOR = params.COLORS
 
