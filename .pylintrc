@@ -1,0 +1,12 @@
+[MASTER]
+disable=
+    import-error,
+    no-name-in-module,
+    undefined-variable,
+    bad-super-call,
+
+[MESSAGES CONTROL]
+disable=
+    line-too-long,
+    too-many-arguments,
+    too-many-locals,

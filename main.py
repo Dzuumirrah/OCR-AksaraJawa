@@ -6,8 +6,6 @@ from tensorflow.python import data
 from src.ocr import OCRPipelineAksara
 
 # import library
-import os
-from pathlib import Path
 from src.canvas import MainWindow
 
 import src.params as params

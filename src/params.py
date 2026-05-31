@@ -41,10 +41,18 @@ class model_conf:
     SPLIT_RATIO = (0.70, 0.15, 0.15)  # Train, Validation, Test
     CLASS_NAMES = names
 
+# konfigurasi OCR
+class ocr_config:
+    CONF_OCR = 0.6
+
 # konfigurasi GUI
 class gui:
-    W_MAIN, H_MAIN = 1200, 800
-    W_CANVAS, H_CANVAS = 500, H_MAIN
+    # Window
+    MARGIN = 40
+    W_MAIN, H_MAIN = 1280, 760          # keseluruhan window
+    W_PANEL, H_PANEL = 280, H_MAIN
+    W_CANVAS, H_CANVAS = W_MAIN - W_PANEL - MARGIN, H_MAIN    # area kamera
+    
     RENDER_FPS = 30
     class ColorsDict(TypedDict):
         DARKER_BLUE: str
@@ -59,7 +67,8 @@ class gui:
         GREEN: str
         RED: str
         PURPLE: str
-        # ...add other colors
+        ACCENT: str
+        BORDER: str
 
     COLORS:ColorsDict = {
         'DARKER_BLUE': "#1a1a2e",
@@ -73,7 +82,9 @@ class gui:
         "ORANGE": "#f39c12",    
         "GREEN": "#2ecc71",      
         "RED": "#e74c3c",       
-        "PURPLE": "#9b59b6"
+        "PURPLE": "#9b59b6",
+        "ACCENT": "#00d4ff",
+        "BORDER": '#3a4563',
     }
 
 class camera:
