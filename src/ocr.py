@@ -90,7 +90,7 @@ class OCRPipelineAksara:
         for x, y, w, h in bboxes:
             pad = 4
             x1, y1 = max(0, x - pad), max(0, y - pad)
-            x2, y2 = min(img_bgr.shape[1], x + w + pad), min(img_bgr.shape[0], y + w + pad)
+            x2, y2 = min(img_bgr.shape[1], x + w + pad), min(img_bgr.shape[0], y + h + pad)
             crop = img_bgr[y1:y2, x1:x2]
             resized = cv2.resize(crop, (self.img_size, self.img_size))
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)

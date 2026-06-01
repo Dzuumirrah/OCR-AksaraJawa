@@ -70,7 +70,7 @@ class OCRWorkerThread(QThread):
 
     def submit_frame(self, frame: cv2.typing.MatLike):
         with self._lock:
-            self._pending_frame = frame.copy()
+            self._pending_frame = frame
 
     def run(self):
         while self.running:
@@ -265,8 +265,8 @@ class CameraWidget(QWidget):
             return
         
         orig_h, orig_w = self._ocr_frame_shape[:2]
-        scale_x = pixmap.width() / orig_h
-        scale_y = pixmap.height() / orig_w
+        scale_x = pixmap.width() / orig_w
+        scale_y = pixmap.height() / orig_h
 
         for h in self._ocr_results:
             bx, by, bw, bh = h['bbox']
