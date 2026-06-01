@@ -37,8 +37,8 @@ class IPWebCamThread(QThread):
         self._latest_frame = None
 
     @staticmethod
-    def _build_mjpeg_url(ip_adress: str, port: int):
-        base = str(ip_adress).strip().rstrip("/")
+    def _build_mjpeg_url(ip_address: str, port: int):
+        base = str(ip_address).strip().rstrip("/")
         if not base.startswith(("http://", "https://")):
             base = f"http://{base}"
         if base.endswith("/video"):
@@ -49,8 +49,8 @@ class IPWebCamThread(QThread):
         return f"{base}:{port}/video"
     
     @staticmethod
-    def _build_rtsp_url(ip_adress: str, port: int):
-        base = str(ip_adress).strip().rstrip("/")
+    def _build_rtsp_url(ip_address: str, port: int):
+        base = str(ip_address).strip().rstrip("/")
         for scheme in ("http://", "https://"):
             if base.startswith(scheme):
                 base = base[len(scheme):]

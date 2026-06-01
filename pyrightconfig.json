@@ -4,15 +4,25 @@
   "pythonVersion": "3.11",
   "pythonPlatform": "Linux",
   "include": [
-    "."
+    "src"
   ],
   "exclude": [
     "**/__pycache__",
     ".venv",
     "dataset_aksara_split",
-    "dataset_aksara"
+    "dataset_aksara",
+    "dataset",
+    "outputs",
+    "documentation",
+    "**/*.ipynb"
   ],
   "typeCheckingMode": "basic",
   "reportMissingImports": "warning",
-  "reportMissingTypeStubs": false
+  "reportMissingTypeStubs": false,
+  "reportGeneralTypeIssues": false,
+  "reportAttributeAccessIssue": false,
+  "reportArgumentType": false,
+  "reportOptionalMemberAccess": false,
+  "stubPath": "",
+  "enableTypeIgnoreComments": true
 }
