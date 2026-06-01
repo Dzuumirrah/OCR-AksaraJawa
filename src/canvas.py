@@ -5,7 +5,6 @@ Struktur GUI:
     StatusBar: Area status (bawah)
     MainWindow : Window utama
 """
-from cProfile import label
 import time
 
 from PyQt5.QtWidgets import (
@@ -48,17 +47,13 @@ from PyQt5.QtCore import (
 import cv2
 from threading import Lock as ThreadLock
 
-from tensorflow.python.framework.test_util import lock
 
 from matplotlib.pylab import box
 from numpy import dot
-from ocr import OCRPipelineAksara
+from src.ocr import OCRPipelineAksara
 from src.camera import IPWebCamThread
 
 from src.params import directory, gui, camera, model_conf, ocr_config
-from tensorflow.python.ops.gen_nn_ops import _QuantizedConv2DWithBiasOutput
-
-import src.ocr
 COLOR = gui.COLORS
 
 class OCRWorkerThread(QThread):
@@ -295,7 +290,7 @@ class AksaraChip(QFrame):
 
     def __init__(self, nama: str, confidence: float, valid: bool, parent: QWidget = None) -> None:
         super().__init__(parent)
-        self.setFrameShape(QFrame.styledPanel)
+        self.setFrameShape(QFrame.StyledPanel)
         border_color = COLOR["GREEN"] if valid else COLOR["RED"]
         self.setStyleSheet(f"""
             QFrame{{
@@ -341,7 +336,7 @@ class _ConfBar (QWidget):
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.AntiAliasing)
+        painter.setRenderHint(QPainter.Antialiasing)
         # Background bar
         painter.fillRect(self.rect(), QColor(COLOR['DARKER_GRAY']))
         # Progress fill
@@ -907,7 +902,7 @@ class MainWindow(QMainWindow):
             ocr_pipeline = OCRPipelineAksara(
                 model_path = directory.MODEL_PATH,
                 class_names = model_conf.CLASS_NAMES,
-                confidence_threshold= ocr_conf.CONF_THRESH
+                confidence_threshold= ocr_config.CONF_OCR
             )
             
             self._ocr_worker = OCRWorkerThread(ocr_pipeline)
@@ -917,23 +912,6 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] OCR model cannot be loaded {e}")
             self._ocr_worker = None
   
-
-        # Thread untuk menampilkan hasil OCR ke canvas
-        try:
-            ocr_pipeline = OCRPipelineAksara(
-                model_path = directory.MODEL_PATH,
-                class_names = model_conf.CLASS_NAMES,
-                confidence_threshold= ocr_conf.CONF_THRESH
-            )
-            
-            self._ocr_worker = OCRWorkerThread(ocr_pipeline)
-            self._ocr_worker.result_ready.connect(self._on_ocr_result)
-            self._ocr_worker.start()
-        except Exception as e:
-            print(f"[MainWindow] OCR model cannot be loaded {e}")
-            self._ocr_worker = None
-  
-
     def _build_layout(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -1001,14 +979,7 @@ class MainWindow(QMainWindow):
             self.status_bar.set_connected(False)
 
 
-    # === Handler =================================
-    @pyqtSlot()
-    def _on_scan_requested(self):
-        """
-        Trigger OCR pada frame terakhir.
-        """
-        print("[MainWindow] Scan requested - Connecting to OCR...")
-    
+    # === Handler =================================    
     @pyqtSlot(bool)
     def _on_auto_scan_toggled(self, enabled: bool):
         if enabled:
@@ -1019,6 +990,8 @@ class MainWindow(QMainWindow):
     @pyqtSlot(float)
     def _on_threshold_changed(self, value: float):
         self._threshold = value
+        if self._ocr_worker and self._ocr_worker.ocr:
+            self._ocr_worker.ocr.conf_thresh = value
 
     @pyqtSlot(str)
     def _on_ip_changed(self, ip: str):
@@ -1030,30 +1003,12 @@ class MainWindow(QMainWindow):
     def _on_update_status_fps(self):
         if self.canvas.camera_enabled:
             self.status_bar.set_fps(self.canvas.actual_fps)
-    
-    def closeEvent(self, event):
-        """Stop background workers before Qt destroys the window."""
-        if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
-            self.canvas.camera_thread.stop()
-        self._auto_scan_timer.stop()
-        self._fps_update_timer.stop()
-        super().closeEvent(event)
-    
-    @pyqtSlot()
-    def _on_change_camera_ip(self):
-        """Ubah IPWebcam URL berdasarkan input user"""
-        current_ip = self.ip_camera_config["ip_adress"]
-        new_ip, ok = QInputDialog.getText(self, "IPWebcam IP adress", 
-                                          "Enter new IP address (contoh: 192.168.1.100):", text=current_ip
-                                          )
-        if ok and new_ip:
-            self.ip_camera_config["ip_adress"] = new_ip
-            print(f"[MAIN] Updated IP camera address to: {new_ip}")
-            self.panel.set_status("IDLE", f"Updated camera IP to {new_ip}")
-            self._start_idle_timer(2000, force=True)
-    
+      
     @pyqtSlot()
     def _on_scan_requested(self):
+        """
+        Trigger OCR pada frame terakhir.
+        """
         if self._ocr_worker is None:
             return
         
@@ -1065,5 +1020,15 @@ class MainWindow(QMainWindow):
     def _on_ocr_result(self, hasil, frame_shape):
         self.canvas.draw_ocr_overlay(hasil, frame_shape)
         valid = [h for h in hasil if h['valid']]
+        self.panel.update_result(hasil)
+        self.status_bar.set_char_count(len(valid))
 
-    
+    def closeEvent(self, event):
+        """Stop background workers before Qt destroys the window."""
+        if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
+            self.canvas.camera_thread.stop()
+        self._auto_scan_timer.stop()
+        self._fps_update_timer.stop()
+        if self._ocr_worker is not None:
+            self._ocr_worker.stop()
+        super().closeEvent(event)
