@@ -1,3 +1,6 @@
+from pydoc import classname
+from tabnanny import verbose
+
 import cv2
 import tensorflow as tf
 from tensorflow import keras
@@ -47,7 +50,7 @@ class OCRPipelineAksara:
         bounding_box.sort(key=lambda b: (b[1] // 40, b[0]))
         return bounding_box
         
-    def klasifikasi_satu(self, img_bgr, bbox):
+    def klasifikasi_satu(self, img_bgr: cv2.typing.MatLike, bbox):
         """Potong satu karater dan prediksi kelasnya"""
         x, y, w, h = bbox
 
@@ -77,6 +80,39 @@ class OCRPipelineAksara:
             'bbox': bbox
         }
     
+    def klasifikasi_batch(self, img_bgr: cv2.typing.MatLike, bboxes):
+        """Klasifikasi semua karakter dalam satu batch"""
+        if not bboxes:
+            return []
+        
+        # Crops segmen
+        crops = []
+        for x, y, w, h in bboxes:
+            pad = 4
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(img_bgr.shape[1], x + w + pad), min(img_bgr.shape[0], y + w + pad)
+            crop = img_bgr[y1:y2, x1:x2]
+            resized = cv2.resize(crop, (self.img_size, self.img_size))
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            crops.append(rgb.astype('float32') / 255.0)
+
+        # predict
+        batch = np.stack(crops, axis=0)
+        all_probs = self.model.predict(batch, verbose=0)
+
+        # return hasil
+        hasil = []
+        for probs, bbox in zip(all_probs, bboxes):
+            pred_idx = np.argmax(probs)
+            confidence = float(probs[pred_idx])
+            hasil.append({
+                'kelas': self.class_names[pred_idx],
+                'confidence': round(confidence, 3),
+                'valid': confidence >= self.conf_thresh,
+                'bbox': bbox
+            })
+        return hasil
+
     def proses(self, image_path, visualisasi=True):
         """
         Jalankan seluruh pipeline OCR pada satu gambar

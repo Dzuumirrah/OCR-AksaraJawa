@@ -13,6 +13,9 @@ class directory:
     OUTPUT_DIR = ROOT_DIR / "dataset/dataset_aksara_split/"
     MODEL_PATH = ROOT_DIR / "model_aksara.keras"
 
+class ocr_conf:
+    CONF_THRESH = 0.6
+
 # Menulis nama kelas 
 if not os.path.exists('class_names.json'):
     dataset_folder = directory.INPUT_DIR

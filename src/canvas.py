@@ -1,5 +1,5 @@
-from curses import qiflush
-from re import S
+from pyclbr import Class
+from sys import exception
 from typing import Self
 
 from PyQt5.QtWidgets import (
@@ -27,14 +27,56 @@ from PyQt5.QtCore import (
     Qt,
     pyqtSignal,
     QMutex,
-    QMutexLocker
+    QMutexLocker,
+    QThread
 )
 import cv2
+from threading import Lock as ThreadLock
 
+from tensorflow.python.framework.test_util import lock
+
+from ocr import OCRPipelineAksara
 from src.camera import IPWebCamThread
 
-from src.params import gui, camera
+from src.params import directory, gui, camera, model_conf, ocr_conf
 COLOR = gui.COLORS
+
+class OCRWorkerThread(QThread):
+    """Worker thread agar OCR inference tidak membekukan GUI."""
+    result_ready = pyqtSignal(list, tuple)  # hasil, frame_shape
+
+    def __init__(self, ocr_pipeline: OCRPipelineAksara) -> None:
+        super().__init__()
+        
+        self.ocr = ocr_pipeline
+        self._pending_frame = None
+        self._lock = ThreadLock()
+        self.running = True
+
+    def submit_frame(self, frame: cv2.typing.MatLike):
+        with self._lock:
+            self._pending_frame = frame.copy()
+
+    def run(self):
+        while self.running:
+            with self._lock:
+                frame = self._pending_frame
+                self._pending_frame = None
+
+            if frame is not None:
+                try:
+                    biner = self.ocr.binarisasi(frame)
+                    boxes = self.ocr.segmentasi_karakter(biner)
+                    hasil = self.ocr.klasifikasi_batch(frame, boxes)
+                    self.result_ready.emit(hasil, frame.shape)
+                except Exception as e:
+                    print(f"[OCRWorker]: Error {e}")
+            else:
+                self.msleep(50)
+
+    def stop(self):
+        self.running = False
+        self.wait(2000)
 
 class  CameraWidget(QWidget):
     MARGIN = 40                         # Margin 
@@ -57,12 +99,18 @@ class  CameraWidget(QWidget):
         # Camera rendering
         self._pixmap_lock = QMutex()
         self._cached_pixmap = None
+        self._latest_frame = None
 
+        # timer render
         self._render_timer = QTimer()
         self._render_timer.setInterval(1000 // self.RENDER_FPS)
         self._render_timer.timeout.connect(self.update)
         self._render_timer.start()
         self._new_frame_available = False
+
+        # Hasil OCR
+        self._ocr_results = []
+        self._ocr_frame_shape = None
 
     @pyqtSlot(object)
     def _on_camera_frame(self, frame: cv2.typing.MatLike):
@@ -95,6 +143,7 @@ class  CameraWidget(QWidget):
         # Simpan cache dengan lock
         with QMutexLocker(self._pixmap_lock):
             self._cached_pixmap = new_pixmap
+            self._latest_frame = frame
 
         # # Triger repaint sesuai FPS dari timer
         # self.update()
@@ -117,10 +166,42 @@ class  CameraWidget(QWidget):
             x = (self.width() - pixmap.width()) // 2
             y = (self.height() - pixmap.height()) // 2
             painter.drawPixmap(x, y, pixmap)
+            if self._ocr_results and self._ocr_frame_shape:
+                self.draw_ocr_boxes(painter, pixmap, x, y)
+                
             # self._draw_camera_background(painter)
         else:
             painter.fillRect(self.rect(), QColor(COLOR['DARKER_BLUE']))
         
+    def draw_ocr_overlay(self, hasil: list, frame_shape: tuple):
+        self._ocr_results = hasil
+        self._ocr_frame_shape = frame_shape
+
+    def draw_ocr_boxes(self, painter: QPainter, pixmap: QPixmap, offset_x, offset_y):
+        """Gambar bounding box dan label OCR di atas frame yang ditampilkan"""
+        if not self._ocr_results or self._ocr_frame_shape is None:
+            return
+        
+        orig_h, orig_w = self._ocr_frame_shape[:2]
+        scale_x = pixmap.width() / orig_h
+        scale_y = pixmap.height() / orig_w
+
+        for h in self._ocr_results:
+            bx, by, bw, bh = h['bbox']
+            sx = int(bx * scale_x) + offset_x
+            sy = int(by * scale_y) + offset_y
+            sw = int(bw * scale_x)
+            sh = int(bh * scale_y)
+
+            color = QColor(COLOR['GREEN']) if h['valid'] else QColor(COLOR['RED'])
+            pen = QPen(color, 2)
+            painter.setPen(pen)
+            painter.drawRect(sx, sy, sw, sh)
+
+            label = f"{h['kelas']} {h['confidence']:.1f}"
+            painter.setFont(QFont("Arial", 9))
+            painter.setPen(QColor(color))
+            painter.drawText(sx, sy - 4, label)
 
     def _draw_camera_background(self, painter):
         """Draw camera frame sebagai background."""
@@ -342,10 +423,27 @@ class MainWindow(QMainWindow):
             "port": 8080
         }
 
+        # Thread untuk menampilkan kamera ke canvas
         self.canvas.camera_thread = IPWebCamThread(
             self.ip_camera_config["ip_adress"],
             self.ip_camera_config["port"]
         )
+
+        # Thread untuk menampilkan hasil OCR ke canvas
+        try:
+            ocr_pipeline = OCRPipelineAksara(
+                model_path = directory.MODEL_PATH,
+                class_names = model_conf.CLASS_NAMES,
+                confidence_threshold= ocr_conf.CONF_THRESH
+            )
+            
+            self._ocr_worker = OCRWorkerThread(ocr_pipeline)
+            self._ocr_worker.result_ready.connect(self._on_ocr_result)
+            self._ocr_worker.start()
+        except Exception as e:
+            print(f"[MainWindow] OCR model cannot be loaded {e}")
+            self._ocr_worker = None
+  
 
     def _build_layout(self):
         central = QWidget()
@@ -413,6 +511,22 @@ class MainWindow(QMainWindow):
             print(f"[MAIN] Updated IP camera address to: {new_ip}")
             self.panel.set_status("IDLE", f"Updated camera IP to {new_ip}")
             self._start_idle_timer(2000, force=True)
+    
+    @pyqtSlot()
+    def _on_scan_requested(self):
+        if self._ocr_worker is None:
+            return
+        
+        frame = self.canvas._latest_frame
+        if frame is not None:
+            self._ocr_worker.submit_frame(frame)
+
+    @pyqtSlot(list, tuple)
+    def _on_ocr_result(self, hasil, frame_shape):
+        self.canvas.draw_ocr_overlay(hasil, frame_shape)
+        valid = [h for h in hasil if h['valid']]
+
+
 
     @pyqtSlot()
     def _on_idle_timeout(self):
