@@ -1,10 +1,11 @@
 tensorflow[and-cuda]
-opencv-python
+opencv-python-headless # dont use opencv-python, it will cause a conflict with PyQt5
 split-folders
 scikit-learn
 matplotlib
 seaborn
 numpy
+PyQt5
 
 notebook 
 jupyterlab 

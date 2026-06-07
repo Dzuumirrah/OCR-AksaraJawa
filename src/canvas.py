@@ -996,10 +996,21 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str)
     def _on_ip_changed(self, ip: str):
         """Ubah IPWebcam URL berdasarkan input user"""
-        self.ip_camera_config['ip_address'] = ip
-        self.ip_camera_config['port'] = self.panel.get_port()
-        print(f"[MainWindow] IP Camera sucsessfully chaged: {ip}:{self.panel.get_port()}")
+        self.canvas.camera_thread.stop()
+        self.canvas.camera_thread.wait()  # Wait for thread to finish
     
+        # Update config
+        self.ip_camera_config["ip_address"] = ip
+        
+        # Create and start new thread
+        self.canvas.camera_thread = IPWebCamThread(
+            self.ip_camera_config["ip_address"],
+            port=self.ip_camera_config["port"]
+        )
+        self.canvas.camera_thread.start()
+        print(f"[MainWindow] IP Camera sucsessfully chaged: {self.ip_camera_config['ip_address']}:{self.ip_camera_config['port']}")
+    
+        
     def _on_update_status_fps(self):
         if self.canvas.camera_enabled:
             self.status_bar.set_fps(self.canvas.actual_fps)

@@ -1,7 +1,4 @@
-from os import path
 import sys
-
-from tensorflow.python import data
 
 from src.ocr import OCRPipelineAksara
 
@@ -24,6 +21,8 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
+    if window.isVisible():
+        print("[MainWindow] : STARTED.")
     sys.exit(app.exec_())
     # 
     # ocr = OCRPipelineAksara(

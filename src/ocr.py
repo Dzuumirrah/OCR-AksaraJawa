@@ -145,7 +145,7 @@ class OCRPipelineAksara:
     def _visualisasi(self, img, hasil):
         """Tampilkan gambar beserta bounding box dan label prediksi"""
 
-        vis = img.copy()
+        vis = img
         for h in hasil:
             x, y, w, hh = h['bbox']
             warna = (0, 200, 0) if h['valid'] else (0, 0, 200)
