@@ -6,6 +6,8 @@ matplotlib
 seaborn
 numpy
 PyQt5
+onnxruntime
+onnx
 
 notebook 
 jupyterlab 

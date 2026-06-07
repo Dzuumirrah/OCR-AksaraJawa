@@ -1,31 +1,67 @@
 {
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-    "python.terminal.activateEnvironment": true,
-    "jupyter.notebookFileRoot": "${workspaceFolder}",
-    "jupyter.askForKernelRestart": false,
+
     "python.languageServer": "Pylance",
-    "python.analysis.autoSearchPaths": true,
-    "python.analysis.useLibraryCodeForTypes": true,
+
+    "python.analysis.languageServerMode": "default",
+
     "python.analysis.indexing": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.autoImportCompletions": false,
+    "python.analysis.useLibraryCodeForTypes": true,
+
     "python.analysis.diagnosticMode": "workspace",
+
     "python.analysis.typeCheckingMode": "basic",
+    "editor.quickSuggestions": {
+        "other": "on",
+        "comments": "off",
+        "strings": "off"
+    },
+    "editor.suggestOnTriggerCharacters": true,
+
     "python.analysis.packageIndexDepths": [
         {
             "name": "tensorflow",
-            "depth": 4,
+            "depth": 10,
             "includeAllSymbols": true
         },
         {
             "name": "keras",
-            "depth": 4,
+            "depth": 10,
             "includeAllSymbols": true
         },
         {
             "name": "tensorflow.keras",
+            "depth": 10,
+            "includeAllSymbols": true
+        },
+        {
+            "name": "numpy",
             "depth": 4,
+            "includeAllSymbols": true
+        },
+        {
+            "name": "cv2",
+            "depth": 4,
+            "includeAllSymbols": true
+        },
+        {
+            "name": "onnx",
+            "depth": 10,
+            "includeAllSymbols": true
+        },
+        {
+            "name": "onnxruntime",
+            "depth": 10,
             "includeAllSymbols": true
         }
     ],
-    "git.ignoreLimitWarning": true,
-    "python.analysis.autoImportCompletions": true
+    "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/dataset/**": true,
+    "**/dataset_aksara/**": true,
+    "**/dataset_aksara_split/**": true,
+    "**/outputs/**": true
+    },
 }

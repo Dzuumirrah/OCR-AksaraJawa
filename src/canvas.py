@@ -893,14 +893,14 @@ class MainWindow(QMainWindow):
                     self.ip_camera_config["ip_address"],
                     port=self.ip_camera_config["port"]
                 )
-        
-        model_name = directory.MODEL_PATH.name
+        _model_path = directory.ONNX_PATH if directory.ONNX_PATH.exists() else directory.MODEL_PATH
+        model_name = _model_path.name
         self.status_bar.set_model_name(model_name)
 
         # Thread untuk menampilkan hasil OCR ke canvas
         try:
             ocr_pipeline = OCRPipelineAksara(
-                model_path = directory.MODEL_PATH,
+                model_path = _model_path,
                 class_names = model_conf.CLASS_NAMES,
                 confidence_threshold= ocr_config.CONF_OCR
             )
@@ -909,7 +909,7 @@ class MainWindow(QMainWindow):
             self._ocr_worker.result_ready.connect(self._on_ocr_result)
             self._ocr_worker.start()
         except Exception as e:
-            print(f"[MainWindow] OCR model cannot be loaded {e}")
+            print(f"[MainWindow] OCR model cannot be loaded: {e}")
             self._ocr_worker = None
   
     def _build_layout(self):

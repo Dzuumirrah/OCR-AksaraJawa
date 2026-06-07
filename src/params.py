@@ -12,6 +12,7 @@ class directory:
     INPUT_DIR = ROOT_DIR / "dataset/OPSI 1"
     OUTPUT_DIR = ROOT_DIR / "dataset/dataset_aksara_split/"
     MODEL_PATH = ROOT_DIR / "model_aksara.keras"
+    ONNX_PATH = ROOT_DIR / "model_aksara.onnx"
 
 # Menulis nama kelas 
 if not os.path.exists('class_names.json'):

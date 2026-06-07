@@ -9,10 +9,29 @@ import matplotlib.pyplot as plt
 
 class OCRPipelineAksara:
     def __init__(self, model_path, class_names, img_size=128, confidence_threshold=0.6):
-        self.model = tf.keras.models.load_model(model_path)
         self.class_names = class_names
         self.img_size = img_size
         self.conf_thresh = confidence_threshold
+
+        model_path = str(model_path)
+        self._use_onnx = model_path.endswith('.onnx')
+        if self._use_onnx:
+            import onnxruntime as ort 
+            sess_opts: ort.SessionOptions = ort.SessionOptions()
+            sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self._session = ort.InferenceSession(
+                model_path,
+                sess_opts,
+                providers=['CPUExecutionProvider']
+            )
+            self._input_name = self._session.get_inputs()[0].name
+            self.model = None
+            print(f"[OCRPipelineAksara] : ONNX model loaded: {model_path}")
+        else:
+            self._session = None
+            self.model = tf.keras.models.load_model(model_path)
+            print(f"[OCRPipelineAksara] : Keras model loaded: {model_path}")
+
 
     def binarisasi(self, img_bgr):
         """Ubah foro bgr menjadi biner"""
@@ -23,6 +42,7 @@ class OCRPipelineAksara:
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, 11,2
         )
+
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
         biner = cv2.morphologyEx(biner,cv2.MORPH_CLOSE, kernel)
         return biner
@@ -50,6 +70,16 @@ class OCRPipelineAksara:
         bounding_box.sort(key=lambda b: (b[1] // 40, b[0]))
         return bounding_box
         
+    def _predict(self, batch: np.ndarray):
+        """
+        Prediksi batch dengan model yang sesuai (Keras atau ONNX)
+        Input: batch dengan shape (N, img_size, img_size, 3) dan tipe float32
+        Output: array dengan shape (N, num_classes) berisi probabilitas prediksi
+        """
+        if self._use_onnx:
+            return self._session.run(None, {self._input_name: batch})[0]
+        return self.model.predict(batch, verbose=0)
+
     def klasifikasi_satu(self, img_bgr: cv2.typing.MatLike, bbox):
         """Potong satu karater dan prediksi kelasnya"""
         x, y, w, h = bbox
@@ -69,7 +99,7 @@ class OCRPipelineAksara:
         batch = np.expand_dims(normalized, axis=0)
 
         # prediksi
-        probs = self.model.predict(batch, verbose=0)[0]
+        probs = self._predict(batch)[0]
         pred_idx = np.argmax(probs)
         confidence = float(probs[pred_idx])
 
@@ -98,7 +128,7 @@ class OCRPipelineAksara:
 
         # predict
         batch = np.stack(crops, axis=0)
-        all_probs = self.model.predict(batch, verbose=0)
+        all_probs = self._predict(batch)
 
         # return hasil
         hasil = []

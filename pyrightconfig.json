@@ -7,6 +7,8 @@
     "src"
   ],
   "exclude": [
+    "**/node_modules",
+    "**/.*",
     "**/__pycache__",
     ".venv",
     "dataset_aksara_split",
@@ -20,9 +22,9 @@
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": false,
   "reportGeneralTypeIssues": false,
-  "reportAttributeAccessIssue": false,
-  "reportArgumentType": false,
-  "reportOptionalMemberAccess": false,
+  "reportAttributeAccessIssue": "warning",
+  "reportArgumentType": "warning",
+  "reportOptionalMemberAccess": "warning",
   "stubPath": "",
-  "enableTypeIgnoreComments": true
+  "enableTypeIgnoreComments": true,
 }

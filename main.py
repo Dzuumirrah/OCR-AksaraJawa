@@ -15,7 +15,6 @@ MODEL_PATH = params.directory.ROOT_DIR / "model_aksara.keras"
 CLASS_NAMES = params.model_conf.CLASS_NAMES
 
 
-
 if __name__ == '__main__':
     # Inisialisasi GUI
     app = QApplication(sys.argv)
