@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QSlider,
     QStatusBar,
-    QSizePolicy
+    QSizePolicy,
 )
 from PyQt5.QtGui import(
     QPaintEvent,
@@ -33,7 +33,7 @@ from PyQt5.QtGui import(
     QImage,
     QPixmap,
     QPen,
-    QFont
+    QFont,
 )
 from PyQt5.QtCore import (
     QTimer, 
@@ -42,7 +42,8 @@ from PyQt5.QtCore import (
     pyqtSignal,
     QMutex,
     QMutexLocker,
-    QThread
+    QThread,
+    QSize
 )
 import cv2
 from threading import Lock as ThreadLock
@@ -154,10 +155,12 @@ class CameraWidget(QWidget):
         super().__init__()
         
         # GUI setup
-        self.setMinimumSize(gui.W_CANVAS, gui.H_CANVAS)
+        self.setMinimumSize(320, 240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(f"""background-color:{COLOR['DARKER_BLUE']}""")
         self.setFocusPolicy(Qt.StrongFocus)
+
+        self._frame_aspect_ratio = None
 
         # Camera declaration
         self.show_camera = False
@@ -186,14 +189,24 @@ class CameraWidget(QWidget):
         self._ocr_results = []
         self._ocr_frame_shape = None
 
+        # Hasil saat scan di frame terakhir
+        self._frozen = False        # True jika hasil OCR dibekukan untuk frame terakhir
+        self._frozen_pixmap = None
+        self._frozen_frame = None
+
     @pyqtSlot(object)
     def _on_camera_frame(self, frame: cv2.typing.MatLike) -> None:
         """Receive frame dari camera thread lalu render dari frame ke pixmap"""
-        if not self.show_camera:
+        if not self.show_camera or self._frozen:
             return
-        
+
         widget_w, widget_h = self.width(), self.height()
         h, w, ch = frame.shape
+        
+        if self._frame_aspect_ratio is None:
+            self._frame_aspect_ratio = w / h
+            self.updateGeometry()  # Trigger layout recalculation
+
 
         # Resize frame sesuai ukuran widget
         scale = max(widget_w / w, widget_h / h)
@@ -214,7 +227,7 @@ class CameraWidget(QWidget):
         # Simpan cache dengan lock
         with QMutexLocker(self._pixmap_lock):
             self._cached_pixmap = new_pixmap
-            self._latest_frame = frame
+            self._latest_frame = frame.copy()
 
         self._frame_count += 1
         now = time.monotonic()
@@ -226,6 +239,13 @@ class CameraWidget(QWidget):
         # # Triger repaint sesuai FPS dari timer
         # self.update()
         
+    def sizeHint(self):
+        """Return preferred size maintaining frame aspect ratio"""
+        if self._frame_aspect_ratio:
+            parent_w = self.parent().width() if self.parent() else 800
+            preferred_h = int(parent_w / self._frame_aspect_ratio)
+            return QSize(parent_w, preferred_h)
+        return super().sizeHint()
 
     def paintEvent(self, event) -> None:
         """Render canvas."""
@@ -239,11 +259,14 @@ class CameraWidget(QWidget):
             x = (self.width() - pixmap.width()) // 2
             y = (self.height() - pixmap.height()) // 2
             painter.drawPixmap(x, y, pixmap)
-            painter.fillRect(0, self.height() - 28, self.width(), 28, QColor(0,0,0,120))
+            
             if self._ocr_results and self._ocr_frame_shape:
                 self.draw_ocr_boxes(painter, pixmap, x, y)
                 
-            # self._draw_camera_background(painter)
+            if self._frozen:
+                painter.setFont(QFont("Arial", 9, QFont.Bold))
+                painter.setPen(QColor(COLOR["ORANGE"]))
+                painter.drawText(8, self.height() - 8, "⏸ FROZEN")
         else:
             # blank jika kamera mati
             painter.fillRect(self.rect(), QColor(COLOR['DARKER_BLUE']))
@@ -284,6 +307,16 @@ class CameraWidget(QWidget):
             painter.setFont(QFont("Arial", 9))
             painter.setPen(QColor(color))
             painter.drawText(sx, sy - 4, label)
+
+    def freeze (self) -> None:
+        """Freeze tampilan di frame terakhir. """
+        self._frozen = True
+
+    def unfreeze(self) -> None:
+        """Lanjutkan tampilan frame baru."""
+        self._frozen = False
+        self._ocr_results = []
+        self._ocr_frame_shape = None
 
 class AksaraChip(QFrame):
     """Kartu kecil menampilkan satu karakter OCR: nama + confidence bar."""
@@ -609,16 +642,34 @@ class ControlPanel(QWidget):
         """)
         self.slider_thresh.valueChanged.connect(self._on_threshold_change)
 
-        # Threshold value
+        # Threshold value Label
         self.label_thresh_val = QLabel(f"{self._threshold:.1f}")
-        self.label_thresh_val.setFixedWidth(32)
+        self.label_thresh_val.setFixedWidth(36)
         self.label_thresh_val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.label_thresh_val.setStyleSheet(f"""color: {COLOR['ACCENT']}; font-size: 11px; font-family: monospace;""")
         
+        # Input numerik threshold
+        self.thresh_input = QLineEdit(f"{self._threshold:.2f}")
+        self.thresh_input.setFixedWidth(40)
+        self.thresh_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {COLOR['DARK_BLUE']};
+                color: {COLOR['ACCENT']};
+                border: 1px solid {COLOR['BORDER']};
+                border-radius: 3px;
+                font-family: monospace;
+                font-size: 11px;
+                padding: 1px 4px;
+            }}
+            QLineEdit:focus {{ border-color: {COLOR['ACCENT']}; }}
+        """)
+        self.thresh_input.returnPressed.connect(self._on_thresh_input_commit)
+
         section_threshold.addWidget(label_thresh)
         section_threshold.addWidget(self.slider_thresh)
         section_threshold.addWidget(self.label_thresh_val)
-        
+        section_threshold.addWidget(self.thresh_input)
+
         layout.addLayout(section_scan)
         layout.addLayout(section_threshold)
 
@@ -732,8 +783,25 @@ class ControlPanel(QWidget):
         """Handle perubahan threshold dari slider"""
         value = self.slider_thresh.value()
         self._threshold = value / 100.0
+        self.label_thresh_val.setText(f"{self._threshold:.1f}")
+        self.thresh_input.setText(f"{self._threshold:.2f}")
         self.threshold_changed.emit(self._threshold)
 
+    def _on_thresh_input_commit(self):
+        """Handle perubahan threshold dari input numerik"""
+        try:
+            val = float(self.thresh_input.text())
+            val = max(0.1, min(0.99, val))
+            self._threshold = val
+            self.slider_thresh.blockSignals(True)
+            self.slider_thresh.setValue(int(val * 100))
+            self.slider_thresh.blockSignals(False)
+            self.label_thresh_val.setText(f"{val:.2f}")
+            self.thresh_input.setText(f"{val:.2f}")
+            self.threshold_changed.emit(val)
+        except ValueError:
+            self.thresh_input.setText(f"{self._threshold:.2f}")
+    
     def _on_copy(self):
         """Handle button copy result OCR"""
         if self._ocr_names:
@@ -822,12 +890,15 @@ class AppStatusBar(QStatusBar):
         self._label_chars = QLabel("0 char")
         self._label_sep3  = QLabel("|")
         self._label_model = QLabel("—")
+        self._label_sep4  = QLabel("|")
+        self._label_ip    = QLabel("—")
 
         # Styling element
         self._dot.setStyleSheet(f"""color: {COLOR['GRAY']}; padding: 0 4px;""")
         self._label_sep1.setStyleSheet(f"""color: {COLOR['BORDER']};""")
         self._label_sep2.setStyleSheet(f"""color: {COLOR['BORDER']};""")
         self._label_sep3.setStyleSheet(f"""color: {COLOR['BORDER']};""")
+        self._label_sep4.setStyleSheet(f"""color: {COLOR['BORDER']};""")
 
         # looping untuk add widget
         for widget in (
@@ -838,7 +909,9 @@ class AppStatusBar(QStatusBar):
             self._label_sep2,
             self._label_chars,
             self._label_sep3, 
-            self._label_model
+            self._label_model,
+            self._label_sep4,
+            self._label_ip
         ):
             self.addWidget(widget)
 
@@ -857,12 +930,20 @@ class AppStatusBar(QStatusBar):
 
     def set_model_name(self, name: str):
         self._label_model.setText(name)
+    
+    def set_ip(self, ip: str):
+        self._label_ip.setText(ip)
 
 class MainWindow(QMainWindow):
     def __init__ (self):
         super().__init__()
         self.setWindowTitle("OCR Aksara Jawa dengan IPWebcam camera")
-        self.setMinimumSize(gui.W_MAIN, gui.H_MAIN)
+        if gui.RESIZABLE:
+            self.setMinimumSize(gui.W_MAIN, gui.H_MAIN)
+            self.resize(gui.W_MAIN, gui.H_MAIN)
+        else:
+            self.setFixedSize(gui.W_MAIN, gui.H_MAIN)
+        
         self.setStyleSheet(f"background-color:{COLOR['DARKER_BLUE']}")
         
         # konfigurasi IP camera
@@ -875,7 +956,7 @@ class MainWindow(QMainWindow):
 
         # Timer auto scan
         self._auto_scan_timer = QTimer(self)
-        self._auto_scan_timer.setInterval(3000)   # Dalam ms
+        self._auto_scan_timer.setInterval(200)   # Dalam ms
         self._auto_scan_timer.timeout.connect(self._on_scan_requested)
         
         # timer update FPS di status bar
@@ -895,7 +976,9 @@ class MainWindow(QMainWindow):
                 )
         _model_path = directory.ONNX_PATH if directory.ONNX_PATH.exists() else directory.MODEL_PATH
         model_name = _model_path.name
+
         self.status_bar.set_model_name(model_name)
+        self.status_bar.set_ip(f"{self.ip_camera_config['ip_address']}:{self.ip_camera_config['port']}")
 
         # Thread untuk menampilkan hasil OCR ke canvas
         try:
@@ -952,16 +1035,32 @@ class MainWindow(QMainWindow):
             if enabled:
                 if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
                     self.canvas.camera_thread.stop()
+                    self.canvas.camera_thread.wait()  # Wait for thread to finish before starting a new one
+                
+                # Buat thread baru dengan config terkini
+                self.canvas.camera_thread = IPWebCamThread(
+                    self.ip_camera_config["ip_address"],
+                    port=self.ip_camera_config["port"]
+                )
                 self.canvas.camera_thread.frame_ready.connect(self.canvas._on_camera_frame)
+                self.canvas.camera_thread.frame_ready.connect(self._on_first_frame)
+                self.canvas.camera_thread.stream_connected.connect(self._on_stream_connected)
                 self.canvas.camera_thread.start()
 
                 self.canvas.camera_enabled = True
                 self.canvas.show_camera = True
+
+                 # Timeout fallback: jika 5 detik tidak ada frame → error
+                self._conn_timeout = QTimer(self)
+                self._conn_timeout.setSingleShot(True)
+                self._conn_timeout.timeout.connect(self._on_connection_timeout)
+                self._conn_timeout.start(5000)
                 
-                self.status_bar.set_connected(True)
             else:
+                self._cancel_conn_timeout()
                 self.canvas.show_camera = False
                 self.canvas.camera_enabled = False
+                self.canvas.unfreeze()
                 
                 if (self.canvas.camera_thread is not None 
                     and self.canvas.camera_thread.isRunning()):
@@ -983,9 +1082,11 @@ class MainWindow(QMainWindow):
     @pyqtSlot(bool)
     def _on_auto_scan_toggled(self, enabled: bool):
         if enabled:
+            self.canvas.unfreeze()  # Pastikan canvas tidak beku saat auto-scan diaktifkan
             self._auto_scan_timer.start()
         else:
             self._auto_scan_timer.stop()
+            self.canvas.unfreeze()  # Unfreeze canvas saat auto-scan dimatikan, agar bisa scan manual lagi
 
     @pyqtSlot(float)
     def _on_threshold_changed(self, value: float):
@@ -1008,6 +1109,8 @@ class MainWindow(QMainWindow):
             port=self.ip_camera_config["port"]
         )
         self.canvas.camera_thread.start()
+
+        self.status_bar.set_ip(ip)
         print(f"[MainWindow] IP Camera sucsessfully chaged: {self.ip_camera_config['ip_address']}:{self.ip_camera_config['port']}")
     
         
@@ -1023,9 +1126,18 @@ class MainWindow(QMainWindow):
         if self._ocr_worker is None:
             return
         
+        is_auto_scan = self._auto_scan_timer.isActive()
+        # Unfreeze canvas sekali lalu OCR frame terakhir untuk scan manual
+        if self.canvas._frozen and not is_auto_scan:
+            self.canvas.unfreeze()
+            return
+        
         frame = self.canvas._latest_frame
         if frame is not None:
             self._ocr_worker.submit_frame(frame)
+
+            if not is_auto_scan:
+                self.canvas.freeze()  # Bekukan canvas setelah scan manual, agar hasilnya tidak berubah sampai user toggle lagi
 
     @pyqtSlot(list, tuple)
     def _on_ocr_result(self, hasil, frame_shape):
@@ -1033,6 +1145,44 @@ class MainWindow(QMainWindow):
         valid = [h for h in hasil if h['valid']]
         self.panel.update_result(hasil)
         self.status_bar.set_char_count(len(valid))
+
+    def _cancel_conn_timeout(self):
+        if hasattr(self, "_conn_timeout") and self._conn_timeout is not None:
+            self._conn_timeout.stop()
+            self._conn_timeout = None
+    
+    @pyqtSlot()
+    def _on_first_frame(self):
+        """Handle frame pertama diterima untuk update status koneksi"""
+        self._cancel_conn_timeout()
+        self.status_bar.set_connected(True)
+        try:
+            self.canvas.camera_thread.frame_ready.disconnect(self._on_first_frame)
+        except Exception:
+            pass
+
+    @pyqtSlot()
+    def _on_connection_timeout(self):
+        """Handle timeout ketika tidak ada frame diterima setelah toggle kamera"""
+        print(f"[MainWindow] Connection timeout triggered.")
+        self.panel.set_camera_button_error()
+        self.status_bar.set_connected(False)
+        if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
+            self.canvas.camera_thread.stop()
+
+        self.canvas.camera_enabled = False
+        self.canvas.show_camera = False
+
+    @pyqtSlot(str)
+    def _on_stream_connected(self, stream_type: str):
+        """Handle update status ketika stream berhasil terhubung"""
+        print(f"[MainWindow] Stream connected: {stream_type}")
+        is_rtsp = stream_type.lower() == "rtsp"
+        self.panel.stream_badge.blockSignals(True)
+        self.panel.stream_badge.setChecked(is_rtsp)
+        self.panel.stream_badge.setText("RTSP" if is_rtsp else "MJPEG")
+        self.panel.stream_badge.blockSignals(False)
+
 
     def closeEvent(self, event):
         """Stop background workers before Qt destroys the window."""

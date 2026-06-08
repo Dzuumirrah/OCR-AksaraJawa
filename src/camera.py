@@ -22,6 +22,7 @@ class IPWebCamThread(QThread):
     IP webcam dapat diakses dari URL seperti http://<IP_ADDRESS>:8080/video
     """
     frame_ready = pyqtSignal(object)
+    stream_connected = pyqtSignal(str)
 
     def __init__(self, ip_address=camera.IP_CAMERA_URL, port=camera.IP_CAMERA_PORT,
                  target_fps = camera.TARGET_FPS, prefer_rtsp=camera.USE_RTSP):
@@ -107,6 +108,7 @@ class IPWebCamThread(QThread):
                 return
             
             self.running = True
+            self.stream_connected.emit(stream_type)
             print(f"[IPWebcam]: Camera thread started. Stream on ({stream_type.upper()}) | target FPS {self.target_fps}")
 
             frame_interval = 1.0/self.target_fps

@@ -52,7 +52,8 @@ class gui:
     MARGIN = 40
     W_MAIN, H_MAIN = 1280, 760          # keseluruhan window
     W_PANEL, H_PANEL = 280, H_MAIN
-    W_CANVAS, H_CANVAS = W_MAIN - W_PANEL - MARGIN, H_MAIN    # area kamera
+    W_CAMERA, H_CAMERA = W_MAIN - W_PANEL - MARGIN, H_MAIN    # area kamera
+    RESIZABLE = True
     
     RENDER_FPS = 30
     class ColorsDict(TypedDict):
