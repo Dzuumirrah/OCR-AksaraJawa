@@ -35,25 +35,44 @@ class OCRPipelineAksara:
 
     def binarisasi(self, img_bgr):
         """Ubah foro bgr menjadi biner"""
+        # Resize ke lebar tetap untuk stabilkan adaptive threshold
+        TARGET_WIDTH = 1200
+        h, w = img_bgr.shape[:2]
+        if w != TARGET_WIDTH:
+            scale = TARGET_WIDTH / w
+            img_bgr = cv2.resize(img_bgr, (TARGET_WIDTH, int(h * scale)), interpolation=cv2.INTER_AREA)
+        
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Clahe untuk normalisasi kontras
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+
+        blur = cv2.GaussianBlur(gray, (3, 3), 0)
         biner = cv2.adaptiveThreshold(
             blur, 255, 
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 11,2
+            cv2.THRESH_BINARY_INV, blockSize=25, C=8
         )
 
+        # Opening untuk membuang noise kecil
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
+        biner = cv2.morphologyEx(biner,cv2.MORPH_OPEN, kernel)
+
+        # Closing untuk menyambung stroke yang hampir menyambung dalam satu karakter
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4,4))
         biner = cv2.morphologyEx(biner,cv2.MORPH_CLOSE, kernel)
+
         return biner
     
     def segmentasi_karakter(self, biner):
         """
         Temukan bounding box dengan contour detection
-        
+        Terdapat Non Max Suppression (NMS) sederhana dengan filter area dan pengurutan berdasarkan posisi
         Return: list of (x, y, w, h) dengan urutan kiri->kanan, atas->bawah
         """
 
+        img_area = biner.shape[0] * biner.shape[1]
         contours, _ = cv2.findContours(
             biner, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
@@ -61,15 +80,79 @@ class OCRPipelineAksara:
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             
-            # filter: abaikan kontour yang terlalu kecil atau terlalu besar
             area = w * h
-            if 200 < area < (biner.shape[0] * biner.shape[1] * 0.5):
-                bounding_box.append((x, y, w, h))
+            # filter: abaikan kontour yang terlalu kecil atau terlalu besar
+            if not (500 < area < img_area * 0.5):
+                continue
+            # filter: abaikan kontour yang terlalu pipih (bukan karakter) atau terlalu lancip
+            aspect_ratio = w / h
+            if not (0.15 < aspect_ratio < 4.0):
+                continue
+            # filter: abaikan bounding box yang terlalu tipis absolute
+            if w < 10 or h < 10:
+                continue
+            bounding_box.append((x, y, w, h))
 
         # urutkan baris atas dulu (y), lalu kiri ke kanan (x)
-        bounding_box.sort(key=lambda b: (b[1] // 40, b[0]))
-        return bounding_box
+        bounding_box.sort(key=lambda b: (b[1] // 50, b[0]))
         
+        # Terapkan NMS
+        bounding_box = self._nms(bounding_box, iou_threshold=0.3)
+        return bounding_box
+    
+    def _nms(self, boxes, iou_threshold: float =0.3):
+        """
+        Non Maximum Suppression sederhana untuk menghilangkan bounding box yang tumpang tindih.
+        
+        Args: 
+            boxes: list of (x, y, w, h)
+            iou_threshold: ambang batas IOU untuk menganggap dua box sebagai tumpang tindih
+        Return:
+            list of (x, y, w, h) setelah NMS
+        """
+        if not boxes:
+            return []
+        
+        # Konversi ke format (x1, y1, x2, y2)
+        rects = np.array([[x, y, x+w, y+h] for x, y, w, h in boxes], dtype=np.float32)
+        areas = (rects[:, 2] - rects[:, 0]) * (rects[:, 3] - rects[:, 1])
+
+        # urutkan berdasarkan area (besar ke kecil)
+        order = areas.argsort()[::-1]
+
+        kept = []
+        suppressed = np.zeros(len(rects), dtype=bool)
+
+        for i in order:
+            if suppressed[i]:
+                continue
+            kept.append(i)
+            
+            # Hitung IoU dengan box lain
+            xx1 = max(rects[i, 0], rects[order, 0])
+            yy1 = max(rects[i, 1], rects[order, 1])
+            xx2 = min(rects[i, 2], rects[order, 2])
+            yy2 = min(rects[i, 3], rects[order, 3])
+
+            w = np.max(0.0, xx2 - xx1)
+            h = np.max(0.0, yy2 - yy1)
+            inter = w * h
+            union = areas[i] + areas[order] - inter + 1e-6
+            iou = inter / union
+
+            # suppress box yang overlap dengan box i
+            to_suppress = order[iou > iou_threshold]
+            suppressed[to_suppress] = True
+            suppressed[i] = False  # jangan suppress box i sendiri
+        
+        result = []
+        for i in kept:
+            x1, y1, x2, y2 = rects[i]
+            result.append((int(x1), int(y1), int(x2 - x1), int(y2 - y1)))
+        
+        return result
+    
+
     def _predict(self, batch: np.ndarray):
         """
         Prediksi batch dengan model yang sesuai (Keras atau ONNX)
