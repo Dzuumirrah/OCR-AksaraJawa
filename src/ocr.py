@@ -35,8 +35,12 @@ class OCRPipelineAksara:
 
     def binarisasi(self, img_bgr):
         """Ubah foro bgr menjadi biner"""
+        # Validate input
+        if img_bgr is None or img_bgr.size == 0:
+            raise ValueError("Input image is None or empty")
+        
         # Resize ke lebar tetap untuk stabilkan adaptive threshold
-        TARGET_WIDTH = 1200
+        TARGET_WIDTH = 1280
         h, w = img_bgr.shape[:2]
         if w != TARGET_WIDTH:
             scale = TARGET_WIDTH / w
@@ -60,7 +64,7 @@ class OCRPipelineAksara:
         biner = cv2.morphologyEx(biner,cv2.MORPH_OPEN, kernel)
 
         # Closing untuk menyambung stroke yang hampir menyambung dalam satu karakter
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4,4))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (6,6))
         biner = cv2.morphologyEx(biner,cv2.MORPH_CLOSE, kernel)
 
         return biner
@@ -82,7 +86,7 @@ class OCRPipelineAksara:
             
             area = w * h
             # filter: abaikan kontour yang terlalu kecil atau terlalu besar
-            if not (500 < area < img_area * 0.5):
+            if not (700 < area < img_area * 0.05):
                 continue
             # filter: abaikan kontour yang terlalu pipih (bukan karakter) atau terlalu lancip
             aspect_ratio = w / h
@@ -129,13 +133,13 @@ class OCRPipelineAksara:
             kept.append(i)
             
             # Hitung IoU dengan box lain
-            xx1 = max(rects[i, 0], rects[order, 0])
-            yy1 = max(rects[i, 1], rects[order, 1])
-            xx2 = min(rects[i, 2], rects[order, 2])
-            yy2 = min(rects[i, 3], rects[order, 3])
+            xx1 = np.maximum(rects[i, 0], rects[order, 0])
+            yy1 = np.maximum(rects[i, 1], rects[order, 1])
+            xx2 = np.minimum(rects[i, 2], rects[order, 2])
+            yy2 = np.minimum(rects[i, 3], rects[order, 3])
 
-            w = np.max(0.0, xx2 - xx1)
-            h = np.max(0.0, yy2 - yy1)
+            w = np.maximum(0.0, xx2 - xx1)
+            h = np.maximum(0.0, yy2 - yy1)
             inter = w * h
             union = areas[i] + areas[order] - inter + 1e-6
             iou = inter / union
@@ -174,6 +178,16 @@ class OCRPipelineAksara:
         x2 = min(img_bgr.shape[1], x + w + pad)
         y2 = min(img_bgr.shape[0], y + h + pad)
         crop = img_bgr[y1:y2, x1:x2]
+        
+        # Validate crop dimensions
+        if crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
+            print(f"[WARNING] Invalid crop dimensions for bbox {bbox}: shape {crop.shape}")
+            return {
+                'kelas': 'INVALID',
+                'confidence': 0.0,
+                'valid': False,
+                'bbox': bbox
+            }
 
         # preprocessing
         resized = cv2.resize(crop, (self.img_size, self.img_size))
@@ -200,22 +214,32 @@ class OCRPipelineAksara:
         
         # Crops segmen
         crops = []
+        valid_bboxes = []
         for x, y, w, h in bboxes:
             pad = 4
             x1, y1 = max(0, x - pad), max(0, y - pad)
             x2, y2 = min(img_bgr.shape[1], x + w + pad), min(img_bgr.shape[0], y + h + pad)
             crop = img_bgr[y1:y2, x1:x2]
+            
+            # Skip invalid crops
+            if crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
+                continue
+            
             resized = cv2.resize(crop, (self.img_size, self.img_size))
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             crops.append(rgb.astype('float32') / 255.0)
+            valid_bboxes.append((x, y, w, h))
 
         # predict
+        if not crops:
+            return []
+        
         batch = np.stack(crops, axis=0)
         all_probs = self._predict(batch)
 
         # return hasil
         hasil = []
-        for probs, bbox in zip(all_probs, bboxes):
+        for probs, bbox in zip(all_probs, valid_bboxes):
             pred_idx = np.argmax(probs)
             confidence = float(probs[pred_idx])
             hasil.append({
@@ -233,6 +257,7 @@ class OCRPipelineAksara:
         Return: list hasil prediksi per karakter
         """
         img = cv2.imread(image_path)
+        print(f"[OCRWorker] Memproses gambar: {image_path}")
         if img is None:
             raise ValueError(f"Gambar tidak ditemukan: {image_path}")
 
@@ -240,7 +265,7 @@ class OCRPipelineAksara:
         boxes = self.segmentasi_karakter(biner)
 
         if not boxes:
-            print("Tidak ada kaarater yang terdeteksi...")
+            print("[OCRWorker] Tidak ada kaarater yang terdeteksi...")
             return []
         
         hasil = [self.klasifikasi_satu(img, box) for box in boxes]
