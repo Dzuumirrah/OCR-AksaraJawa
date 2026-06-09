@@ -5,6 +5,7 @@ dataset/
 *.hdf5
 *.npy
 *.npz
+*.zip
 
 # Model weights and saved models
 models/
@@ -42,3 +43,6 @@ secret.json
 
 # Folders
 documentation/
+
+# Linux thing
+*.Identifier

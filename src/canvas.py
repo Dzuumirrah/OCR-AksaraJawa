@@ -81,9 +81,9 @@ class OCRWorkerThread(QThread):
 
             if frame is not None:
                 try:
-                    biner = self.ocr.binarisasi(frame)
+                    biner, scale, orig_dim = self.ocr.binarisasi(frame)
                     boxes = self.ocr.segmentasi_karakter(biner)
-                    hasil = self.ocr.klasifikasi_batch(frame, boxes)
+                    hasil = self.ocr.klasifikasi_batch(frame, boxes, scale=scale)
                     self.result_ready.emit(hasil, frame.shape)
                 except Exception as e:
                     print(f"[OCRWorker]: Error {e}")

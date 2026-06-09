@@ -39,12 +39,14 @@ class OCRPipelineAksara:
         if img_bgr is None or img_bgr.size == 0:
             raise ValueError("Input image is None or empty")
         
+        orig_h, orig_w = img_bgr.shape[:2]
         # Resize ke lebar tetap untuk stabilkan adaptive threshold
         TARGET_WIDTH = 1280
-        h, w = img_bgr.shape[:2]
-        if w != TARGET_WIDTH:
-            scale = TARGET_WIDTH / w
-            img_bgr = cv2.resize(img_bgr, (TARGET_WIDTH, int(h * scale)), interpolation=cv2.INTER_AREA)
+        scale = 1.0
+        
+        if orig_w > TARGET_WIDTH:
+            scale = TARGET_WIDTH / orig_w
+            img_bgr = cv2.resize(img_bgr, (TARGET_WIDTH, int(orig_h * scale)), interpolation=cv2.INTER_AREA)
         
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
@@ -67,7 +69,7 @@ class OCRPipelineAksara:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (6,6))
         biner = cv2.morphologyEx(biner,cv2.MORPH_CLOSE, kernel)
 
-        return biner
+        return biner, scale, (orig_w, orig_h)
     
     def segmentasi_karakter(self, biner):
         """
@@ -86,14 +88,14 @@ class OCRPipelineAksara:
             
             area = w * h
             # filter: abaikan kontour yang terlalu kecil atau terlalu besar
-            if not (700 < area < img_area * 0.05):
+            if not (700 < area < img_area * 0.5):
                 continue
             # filter: abaikan kontour yang terlalu pipih (bukan karakter) atau terlalu lancip
             aspect_ratio = w / h
             if not (0.15 < aspect_ratio < 4.0):
                 continue
             # filter: abaikan bounding box yang terlalu tipis absolute
-            if w < 10 or h < 10:
+            if w < 15 or h < 15:
                 continue
             bounding_box.append((x, y, w, h))
 
@@ -101,10 +103,10 @@ class OCRPipelineAksara:
         bounding_box.sort(key=lambda b: (b[1] // 50, b[0]))
         
         # Terapkan NMS
-        bounding_box = self._nms(bounding_box, iou_threshold=0.3)
+        bounding_box = self._nms(bounding_box, iou_threshold=0.2)
         return bounding_box
     
-    def _nms(self, boxes, iou_threshold: float =0.3):
+    def _nms(self, boxes, iou_threshold: float = 0.3):
         """
         Non Maximum Suppression sederhana untuk menghilangkan bounding box yang tumpang tindih.
         
@@ -207,10 +209,14 @@ class OCRPipelineAksara:
             'bbox': bbox
         }
     
-    def klasifikasi_batch(self, img_bgr: cv2.typing.MatLike, bboxes):
+    def klasifikasi_batch(self, img_bgr: cv2.typing.MatLike, bboxes, scale=1.0):
         """Klasifikasi semua karakter dalam satu batch"""
         if not bboxes:
             return []
+        
+        if scale != 1.0:
+            # Skala kembali bounding box ke ukuran asli jika gambar diresize
+            bboxes = [(int(x / scale), int(y / scale), int(w / scale), int(h / scale)) for x, y, w, h in bboxes]    
         
         # Crops segmen
         crops = []
